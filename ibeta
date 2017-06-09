@@ -1,0 +1,156 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+intrinsic ibeta(K::FldNum,p::RngIntElt)->SeqEnum,SeqEnum
+{Computes ibeta of a global field L with prime p}
+
+	require IsPrime(p): "Second argument is not a prime.";
+
+	L := AbsoluteField(K);
+	f := DefiningPolynomial(L);
+	D := Discriminant(f);
+	val := Valuation(D,p);	
+
+	Fp := pAdicField(p,2*val+ 10);
+	Ff_ := LocalField(Fp,f);
+	Ff := RamifiedRepresentation(Ff_);
+	return ibeta(Ff);
+
+end intrinsic;
+
+
+intrinsic ibeta(F::FldPad)->SeqEnum,SeqEnum
+{Computes ibeta of a local field F}
+	precision := requiredPrecision(F,"ibeta");
+	F := ChangePrecision(F,precision);
+	p := Prime(F);
+	e := AbsoluteRamificationDegree(F);
+	e0 := e div (p-1);
+	r := Valuation(e0, p);	
+
+
+	superfluousElt,baseSuperFluousElt := superfluousElement(F);
+	exponents,gPU := exponentialRepresentation(superfluousElt,precision);
+	exponentsMutated := func< t | t ne baseSuperFluousElt select exponents(t) else exponents(t) - p^(r+1)>;
+
+
+
+    J := [ j : j in [1..(p*e0-1)] | j mod p ne 0 ];	
+    c := [0 : j in [1..p*e0]];
+
+    for j in J do
+    	m := Min( [Valuation(exponentsMutated(t),p) : t in gPU(j)] ); 
+    	if m eq Infinity() then 
+    		c[j] := 0; //Exclude(~J,j); 
+    	else
+    		c[j] := p^m; 
+    	end if; 
+    end for;
+
+    m := Valuation(exponentsMutated(gPU`Delta),p);
+    if (m ne Infinity()) then J := J cat [p*e0]; c[p*e0] := p^m; end if; 
+    
+    J := [j : j in [1..p*e0] | c[j] ne 0]; 
+
+    upwardsReduction(~J,~c);
+    downwardsReduction(~J,~c);
+
+    I := J;
+    beta := [Valuation(c[i],p) : i in I];
+
+    return I,beta;
+
+end intrinsic;
+
+
+intrinsic ibeta_special(f::RngUPolElt,p::RngIntElt)->SeqEnum,SeqEnum
+{Computes ibeta for an Eisenstein polynomial}
+	require IsPrime(p): "Second argument not prime";
+
+    d := Degree(f);
+    fList := Eltseq(f);
+    K := Parent(fList[1]); // Parent field of the coefficients of f
+    R := Integers(K);    
+    
+    // Check whether p is well-posed
+    // ------------------------------
+    TorsUnitGroup,mapToField := TorsionUnitGroup(K);
+    m := #TorsUnitGroup; // amount of roots of unity
+    require (m mod p eq 0): "p doesn't divide the cyclotomic order";
+
+    zeta_p := mapToField( (m div p)*TorsUnitGroup.1 );
+    prime := ideal<R| 1-zeta_p>;    
+    
+    // Check whether f is indeed Eisenstein
+     require  (Valuation(Eltseq(f)[1],prime) eq 1 and Min([Valuation(c,prime) : c in Prune(Eltseq(f)) ]) ge 1): "Input polynomial is not an Eisensteinpolynomial";    
+    
+   
+    
+    Remove(~fList,1);
+    
+    S := [ <i,Valuation(fList[i],prime)> : i in [1..d]];
+
+
+    // Initialization
+    pairList := [];
+    while (not IsEmpty(S)) do
+        // take lexicographical minimum of S
+        m := Min([s[2] : s in S]);
+        i := Min([s[1] : s in S | s[2] eq m ]);
+        
+        // add to pairList
+        pairList := pairList cat [<i,m>];
+        
+        // Remove the 'too high p-valued indices' from S
+        S := [s  : s in S | Valuation(s[1],p) lt Valuation(i,p) ];
+    end while;
+    
+
+    I := [(d*s[2] + s[1]) div (p^Valuation(s[1],p)) : s in pairList ];
+    Sort(~I);
+    beta := [Integers()! Valuation(s[1],p) + 1 : s in pairList];
+    Sort(~beta); 
+    Reverse(~beta);
+    
+    return I,beta;
+
+end intrinsic;
+
+
+intrinsic upwardsReduction(~J,~c)
+{}
+    for jac in J do
+        for j in [j : j in J | j lt jac] do
+            if (c[j] le c[jac]) then
+                c[jac] := 0;
+                Exclude(~J,jac);
+            end if;
+        end for;
+    end for;
+end intrinsic;
+
+
+intrinsic downwardsReduction(~J,~c)
+{}
+    for kac in J do
+        for k in [k : k in J | k lt kac] do
+            if (k*c[k] ge kac*c[kac]) then
+                c[k] := 0;
+                Exclude(~J,k);
+            end if;
+        end for;
+   end for;
+
+end intrinsic;

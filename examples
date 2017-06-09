@@ -1,0 +1,123 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+
+
+
+
+
+// Example power residue symbol
+// ----------------------------
+
+    // Takes approximately 1 minute
+
+    // Initialization
+
+
+
+    m1 := 7^2;
+    L1<z1> := CyclotomicField(m1);
+    R1 := Integers(L1);
+
+
+    a1 := 4323* z1^9 + 532*z1^2 + 2;
+    b1 := 432*z1^3 + 324*z1^2 + z1 + 4;
+    s1 := powerResidueSymbol(a1,b1,m1,z1,R1);
+    s2 := powerResidueSymbol(b1,a1,m1,z1,R1);
+    s3 := umkehrFaktor(a1,b1,ideal<R1|m1>,z1); 
+    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m1;
+
+    
+    a1,b1 := getTwoCoPrimeElements(R1,m1,4); // from "getRandomElement"
+    a1 := L1!a1; b1 := L1!b1;
+    s1 := powerResidueSymbol(a1,b1,m1,z1,R1);
+    s2 := powerResidueSymbol(b1,a1,m1,z1,R1);
+    s3 := umkehrFaktor(a1,b1,ideal<R1|m1>,z1); 
+    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m1;
+
+
+// Example Hilbert symbol
+// -----------------------
+
+    // GLOBAL -------------------
+    m1 := 5^2*3^2;
+    L1<z1> := CyclotomicField(m1);
+    R1 := Integers(L1);
+    a1 := 4323* z1^9 + 532*z1^2 + 2;
+    b1 := 432*z1^3 + 324*z1^2 + z1 + 4;    
+    pi := Decomposition(R1,5)[1][1]; // Prime ideal above (5)
+    
+
+    print hilbertSymbol(a1,b1,pi,m1,z1);
+
+
+
+    // LOCAL --------------------------
+
+    // Initialization
+    m1 := 3^2*7;
+    F3 := pAdicField(3,400);
+    F<z> := LocalField(F3,CyclotomicPolynomial(m1));
+    F,map := RamifiedRepresentation(F);
+    z := map(z);
+    pi := UniformizingElement(F);
+    // For the hilbert symbol, it is needed that the local field
+    // is given in a ramified representation. I.e.: totally ramified
+    // over a unramified extension.
+
+    x := 1 + 2*z*pi + 3*z^2*pi^2 + (1-z^3)*pi^3;
+    y := 1 + 1*z*pi + 2*z^3*pi^2 + (1-z^2)*pi^3;
+
+    symbol,zeta := hilbertSymbol(x,y,m1,z);
+    print symbol;
+
+
+
+
+// Example IBETA 
+// ------------------------------
+//
+// example ibeta which does not come from an unsaturated eisenstein polynomial
+
+	K<z3> := CyclotomicField(3);
+	PK<y> := PolynomialRing(K);
+    f := y^(3^3) - 3*y^(3) - 3*(1-z3)^2*y^1 + (1-z3); // eisenstein polynomial
+
+    L := ext<K|f>;
+    I, beta := ibeta(L,3);
+
+    printf "I = %o, beta = %o\n",I,beta;
+
+
+
+
+
+// example ibeta which does come from an unsaturated eisenstein polynomial
+
+    // Start with cyclotomic field
+	K<z3> := CyclotomicField(3);
+	PK<y> := PolynomialRing(K);
+    f := y^(3^4) - (1-z3)*y^(3^2) - (1-z3)^2*y^1 + (1-z3); // eisenstein polynomial
+
+    I, beta := ibeta_special(f,3);
+
+    L := ext<K|f>;
+    I2, beta2 := ibeta(L,3);
+
+    printf "(%o,%o) and (%o,%o) are the same.\n",I,beta,I2,beta2;
+
+
+
+

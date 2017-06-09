@@ -1,0 +1,452 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+intrinsic powerResidueSymbol(alpha::FldNumElt,beta::FldNumElt,m::RngIntElt)->RngIntResElt,FldNumElt
+{Overloads power residyue symbol to user-friendly mode}
+	L := Parent(alpha);
+	require beta in L: "Second argument is not in the field of the first argument.";
+
+	// This makes the algorithm less efficient. Finding the ring of integers is hard,
+	R := Integers(L);
+
+	G,map := TorsionUnitGroup(L);
+	m0 := #G;
+	require (m0 mod m eq 0): "The input m does not divide the cyclotomic order of the field of the first element.";
+	z_m0 := map(G.1);
+	z_m := z_m0^(m0 div m);
+	return powerResidueSymbol(alpha,beta,m,L!z_m,R);
+end intrinsic;
+
+
+intrinsic powerResidueSymbol(alpha::FldNumElt,bIdeal::RngOrdIdl,m::RngIntElt)->RngIntResElt,FldNumElt
+{Computes the power residue symbol (alpha/bIdeal)_m, user-friendly version}
+	L := Parent(alpha);
+	R := Order(bIdeal);
+	require alpha in R: "The first element is not in the order where the ideal lives.";
+
+	G,map := TorsionUnitGroup(L);
+	m0 := #G;
+	require (m0 mod m eq 0): "The input m does not divide the cyclotomic order of the field of the first element.";
+	z_m0 := map(G.1);
+	z_m := L!(z_m0^(m0 div m));
+	return powerResidueSymbol(alpha,bIdeal,m,z_m);
+end intrinsic;
+
+intrinsic powerResidueSymbol(alpha::FldNumElt,beta::FldNumElt,m::RngIntElt,zeta_m::FldNumElt,R::RngOrd)->RngIntResElt,FldNumElt
+{Overloads power residue symbol for principal ideal input.}
+    return powerResidueSymbol_Reduction(alpha,beta,m,zeta_m,R);
+
+end intrinsic;
+
+
+intrinsic powerResidueSymbol(alpha::FldNumElt,bIdeal::RngOrdIdl,m::RngIntElt,zeta_m::FldNumElt)->RngIntResElt,FldNumElt
+{Computes the power residue symbol (alpha/bIdeal)_m}
+	L := Parent(alpha);
+	R := Order(bIdeal);
+	d := Degree(R);
+	// TODO: Change such that this algorithm also works for arbitrary orders
+
+
+	NormBIdeal := Norm(bIdeal);
+	require GCD(NormBIdeal,m) eq 1: Sprintf("The input ideal and m are not coprime."); 
+	require IsOne( GCD(ideal<R|alpha>,bIdeal) ): Sprintf("The input alpha and bIdeal are not coprime.");
+
+
+	// LLL reduce the bIdeal
+	// ------------------------------------
+	MatrixOfBIdeal := BasisMatrix(bIdeal);
+	LLLMatrixOfBIdeal := LLL(MatrixOfBIdeal);
+	// --------------------------------------
+
+
+
+	smoothnessBound := Round(12*Log(Abs(Discriminant(R)))^2);
+	normOfAlpha := Abs(Norm(R!alpha));
+
+
+	// The next for loop finds a small beta in bIdeal 
+	// such that (beta)/bIdeal is near-prime
+	maximumSteps := d^3;
+	for i in [1..maximumSteps] do
+		beta := R!randomSmallVectorGeneratedByRows(LLLMatrixOfBIdeal, Ceiling(Sqrt(d)));
+
+		normOfBeta := Abs(Norm(beta));
+		// See cIdeal * bIdeal = (beta).
+
+		NormCIdeal := normOfBeta div NormBIdeal;
+
+		// Sanity checks
+		if (GCD(NormCIdeal,m) ne 1) then continue; end if;
+		if (GCD(NormCIdeal,normOfAlpha) ne 1) then continue; end if;
+
+		// Apply trial division to the norm of the ideal c
+		smoothFactors,largeFactors := TrialDivision(NormCIdeal, smoothnessBound : Proof := false);
+
+		//smoothFactors,largeFactors := trialDivisionOriginal(NormCIdeal, smoothnessBound);
+
+		// If the large factor is empty, or prime, then proceed.
+		if IsEmpty(largeFactors) then
+				// Divide beta by bIdeal to obtain c. We do this in a fast way;
+				// -----------------------
+				// if bIdeal and cIdeal does not share a divisor, 
+				// we can calculate cIdeal = GCD(beta,NormCIdeal)
+				// ------------------------------------
+				// TODO Maybe include some more tricks
+
+				if (GCD(NormBIdeal,NormCIdeal) eq 1) then
+					cIdeal := GCD(ideal<R|beta>,ideal<R|NormCIdeal>);
+				elif (IsOne(GCD(bIdeal,ideal<R|NormCIdeal>))) then
+					cIdeal := GCD(ideal<R|beta>,ideal<R|NormCIdeal>);
+				else
+					cIdeal := ideal<R|beta> div bIdeal;
+				end if;
+
+				//if IsEmpty(largeFactors) then 
+					factorizationOfNormOfCIdeal:= smoothFactors;
+				//else 
+				//	factorizationOfNormOfCIdeal := smoothFactors cat [<largeFactors[1],1>];
+				//end if;
+				if IsEmpty(factorizationOfNormOfCIdeal) then
+
+					return powerResidueSymbol_Small(alpha,L!beta,m,zeta_m,R),zeta_m;
+				end if;
+
+				factorizationOfNormOfCIdeal := smoothFactors;//cat [<largeFactors[1],1>];
+				factorizationOfCIdeal := factorNearPrimeIdeal(cIdeal,factorizationOfNormOfCIdeal,R,m);
+
+				prs_alphaOverCIdeal := powerResidueSymbol_Naive(alpha,factorizationOfCIdeal,m,zeta_m);
+				//prs_alphaOverBeta := powerResidueSymbol_Small(alpha,L!beta,m,zeta_m,R);
+				prs_alphaOverBeta := powerResidueSymbol_Reduction(alpha,L!beta,m,zeta_m,R);
+
+				//prs_alphaOverBeta := powerResidueSymbol_Reduction(alpha,L!beta,m,zeta_m,R); // "Reduction stage" principal power residue symbol,
+				return prs_alphaOverBeta - prs_alphaOverCIdeal,zeta_m;
+
+
+
+
+		end if;
+
+		// TODO, in the older version here is some extra hack to make this loop continue faster.
+
+	end for;
+
+	require false: Sprintf("After %o steps no suitable near prime found",maximumSteps);
+
+
+end intrinsic;
+
+intrinsic powerResidueSymbol_Small(alpha::FldNumElt,beta::FldNumElt,m::RngIntElt,zeta_m::FldNumElt,R::RngOrd)->RngIntResElt,FldNumElt
+{}
+	require IsOne(GCD(ideal<R|alpha>,ideal<R|beta>)): "alpha and beta are not coprime";
+	//require IsOne(GCD(ideal<R|alpha>,ideal<R|m>)):  
+	L := Parent(alpha);
+
+	d := Degree(R);
+	alpha := R!alpha;
+	beta := R!beta;
+
+	maximumSteps := Round((Log(coefficientNorm(beta))+1)*d^2);
+	smoothnessBound := Round(12*Log(Abs(Discriminant(R)))^2);
+
+	Mbeta := BasisMatrix(ideal<R|beta>);
+	Mbeta := LLL(Mbeta);
+	NormOfBeta := Norm(beta);
+	if Abs(NormOfBeta) eq 1 then return Integers(m)!0,zeta_m; end if;
+
+	NormOfAlpha := Norm(alpha);
+	require (GCD(NormOfAlpha,m) eq 1 and GCD(NormOfBeta,m) eq 1): "alpha or beta is not coprime with m.";
+
+
+	quotientRingModBeta := quo<R|ideal<R|beta> >;
+
+	alpha_0 := alpha;
+
+	for i in [1..maximumSteps] do
+		NormOfAlpha := Abs(Norm(alpha));
+		if (GCD(NormOfAlpha,m) ne 1) then continue; end if;
+		if (not IsOne(GCD(ideal<R|alpha>,ideal<R|beta>))) then  continue; end if;
+		smoothFactors,largeFactors := TrialDivision(Integers()!NormOfAlpha, smoothnessBound : Proof := false);
+
+		if (IsEmpty(largeFactors) and IsEmpty(smoothFactors)) then 
+			require (Abs(NormOfAlpha) eq 1): "Error in trial division!";
+		end if;
+		if IsEmpty(largeFactors) then
+
+				factorizationOfNormOfAlpha := smoothFactors;			
+				if IsEmpty(factorizationOfNormOfAlpha) then
+					return umkehrFaktor(alpha,beta,ideal<R|m>,zeta_m),zeta_m;
+				end if;
+				factorizationOfAlpha := factorNearPrimeIdeal(ideal<R|alpha>,factorizationOfNormOfAlpha,R,m);
+
+
+				prs_betaOverAlpha := powerResidueSymbol_Naive(beta,factorizationOfAlpha,m,zeta_m);
+				umkehrSymbol := umkehrFaktor(alpha,beta,ideal<R|m>,zeta_m);
+				return prs_betaOverAlpha + umkehrSymbol,zeta_m;
+
+
+		end if;
+
+		repeat
+			gamma := Random(quotientRingModBeta)^m;
+			alpha_mod := gamma*(quotientRingModBeta!alpha_0);
+		until IsInvertible(alpha_mod);
+
+		liftAlpha_mod := R!alpha_mod;
+
+		alpha := elementReductionModuloMatrix(liftAlpha_mod,Mbeta,R,m);
+
+	end for;
+	
+	require false: Sprintf("After %o steps no suitable near prime found",maximumSteps);
+
+end intrinsic
+
+
+
+intrinsic powerResidueSymbol_Reduction(alpha::FldNumElt,beta::FldNumElt,m::RngIntElt,zeta_m::FldNumElt,R::RngOrd)->RngIntResElt,FldNumElt
+{Computes the principal power residue symbol (alpha/beta)_m}
+	L := Parent(alpha);
+	d := Degree(R);
+	C := d/2; 	// Some 'smart' bound, if the coefficient size of alpha or beta is smaller
+				// than d/2, we use the "Small" power residue symbol.
+	switchBound := 0.6; // if Log(Abs(alpha)) < switchBound Log(Abs(beta)), alpha and beta are swapped.
+
+
+	NormAlpha := Integers()!Abs(Norm(alpha));
+	NormBeta := Integers()!Abs(Norm(beta));
+
+	if NormAlpha lt switchBound*NormBeta then
+		umkehrSymbol := umkehrFaktor(alpha,beta,ideal<R|m>,zeta_m);
+		prs_BetaOverAlpha := powerResidueSymbol_Reduction(beta,alpha,m,zeta_m,R) ;
+		return prs_BetaOverAlpha + umkehrSymbol,zeta_m;
+	end if;
+
+	//print Round(Log(NormAlpha)),Round(Log(NormBeta));
+
+
+	require (GCD(NormAlpha,m) eq 1 and GCD(NormAlpha,m) eq 1): "The inputs of the symbol are not coprime with m.";
+	require (IsOne(GCD(ideal<R|alpha>,ideal<R|beta>))): "The denominator and numerator of the power residue symbol are not coprime.";
+
+	Mgamma1gamma2 := createGamma1Gamma2Lattice(alpha,beta,m,zeta_m,R);
+	Mgamma1gamma2 := LLL(Mgamma1gamma2);
+
+	amountOfRows := 1;
+	repeat
+		SmallRow := randomSmallVectorGeneratedByRows(Mgamma1gamma2,amountOfRows);
+		gamma1 := R! Eltseq(SmallRow[1..d]);
+		gamma2 := R! Eltseq(SmallRow[d+1..2*d]);
+		NormGamma1 := Norm(gamma1);
+		NormGamma2 := Norm(gamma2);
+		amountOfRows +:=1;
+	until ((GCD(NormGamma1,m) eq 1) and (GCD(NormGamma2,m) eq 1) and (IsOne(GCD(ideal<R|gamma1>,ideal<R|beta>))));
+
+	
+	if  ( (Log(Abs(Norm(gamma1))) lt switchBound*Log(NormBeta)) and (Log(Abs(Norm(gamma2))) lt switchBound*Log(NormBeta) )) then
+		prs_Gamma2OverBeta := powerResidueSymbol_Reduction(L!gamma2,beta,m,zeta_m,R);
+		prs_Gamma1OverBeta := powerResidueSymbol_Reduction(L!gamma1,beta,m,zeta_m,R);
+		return prs_Gamma2OverBeta - prs_Gamma1OverBeta,zeta_m;
+		// Because (alpha*gamma1/beta)_m = (gamma2/beta)_m
+	else
+		prs_BetaOverGamma2 := powerResidueSymbol_Small(beta,L!gamma2,m,zeta_m,R);
+		prs_BetaOverGamma1 := powerResidueSymbol_Small(beta,L!gamma1,m,zeta_m,R);	
+		umkehrSymbolGamma1Beta := umkehrFaktor(L!gamma1,L!beta,ideal<R|m>,zeta_m);
+		umkehrSymbolGamma2Beta := umkehrFaktor(L!gamma2,L!beta,ideal<R|m>,zeta_m);
+
+		return prs_BetaOverGamma2 + umkehrSymbolGamma2Beta - (prs_BetaOverGamma1 + umkehrSymbolGamma1Beta),zeta_m;
+
+	end if;
+end intrinsic;
+
+intrinsic powerResidueSymbol_Naive(alpha::RngOrdElt,factorizationOfCIdeal::SeqEnum,m::RngIntElt,zeta_m::FldNumElt)->RngIntResElt
+{Naive power residue symbol for a given factorization, overloaded for ring ord element}
+	alpha := Parent(zeta_m)!alpha;
+	return powerResidueSymbol_Naive(alpha,factorizationOfCIdeal,m,zeta_m);
+end intrinsic;
+
+intrinsic powerResidueSymbol_Naive(alpha::FldNumElt,factorizationOfCIdeal::SeqEnum,m::RngIntElt,zeta_m::FldNumElt)->RngIntResElt
+{Naive power residue symbol for a given factorization}
+	symbol := Integers(m) ! 0;
+	for factorTuple in factorizationOfCIdeal do
+
+		prime := factorTuple[1];
+		if Norm(prime) ne 1 then
+		power := factorTuple[2];
+		symbol +:= power*powerResidueSymbol_Naive(alpha,prime,m,zeta_m);
+		end if;
+	end for;
+	return symbol,zeta_m;
+end intrinsic;
+
+intrinsic powerResidueSymbol_Naive(alpha::FldNumElt, prime::RngOrdIdl, m::RngIntElt, zeta_m::FldNumElt)->RngIntResElt
+{Naive power residue symbol for a given prime}
+	NormPrime := Norm(prime);
+	if NormPrime eq 1 then return Integers(m)!0, zeta_m; end if;
+	//require NormPrime ne 1: "The norm of the ideal is one; give a prime ideal.";
+	require (NormPrime mod m) eq 1: "The norm of the prime is not 1 modulo m";
+
+	R := Order(prime);
+	RmodPrime := quo<R|prime>;
+
+
+	alphabar := RmodPrime!alpha;
+	prs_alphaOverPrime := alphabar^((NormPrime -1) div m);
+	zetabar := RmodPrime! zeta_m;
+
+	for i in [0..(m-1)] do
+		if ((zetabar^i - prs_alphaOverPrime) eq RmodPrime!0) then 	return Integers(m)!i, zeta_m; end if;
+	end for;
+	require false: Sprintf("No valid logarithm of given root of unity found. p = %o",MinimalInteger(prime));
+
+end intrinsic;
+
+
+
+
+intrinsic factorNearPrimeIdeal(cIdeal::RngOrdIdl, factorizationOfNormOfCIdeal::SeqEnum, R::RngOrd, m::RngIntElt)->SeqEnum
+{Factors a near prime ideal}
+	largestPrimeFactor := factorizationOfNormOfCIdeal[#factorizationOfNormOfCIdeal];
+
+	factorizationOfCIdeal := [];
+
+	if largestPrimeFactor[1] eq 1 then
+		Prune(~factorizationOfNormOfCIdeal); // removes last entry
+		cIdealDivLargestPrimeIdeal := cIdeal;
+	else
+		largestPrimeIdeal := GCD(cIdeal,ideal<R|largestPrimeFactor[1]>); // computes largest prime ideal
+		Prune(~factorizationOfNormOfCIdeal); // remove large prime number from list
+		if not IsEmpty(factorizationOfNormOfCIdeal) then
+			productOfSmallPrimes := &*[tuple[1]^tuple[2] : tuple in factorizationOfNormOfCIdeal]; // take product of small primes (including powers)
+		else 
+			productOfSmallPrimes := 1; 
+		end if;
+		cIdealDivLargestPrimeIdeal := GCD(cIdeal,ideal<R|productOfSmallPrimes>); // this equals cIdeal/largestPrimeIdeal.
+		factorizationOfCIdeal cat:= [<largestPrimeIdeal,1>];
+	end if;
+
+	while not IsEmpty(factorizationOfNormOfCIdeal) do
+		lastTuple := factorizationOfNormOfCIdeal[#factorizationOfNormOfCIdeal];
+		p := lastTuple[1];
+		power := lastTuple[2];
+		// --------------------
+		// maybe optimize later
+		// -------------------
+		//factorPrimePartOfIdeal(cIdealDivLargestPrimeIdeal,p,power);
+		factorizationOfCIdeal cat:= Factorization(GCD(cIdealDivLargestPrimeIdeal,ideal<R|p^power>));
+		Prune(~factorizationOfNormOfCIdeal);
+	end while;
+	return factorizationOfCIdeal;
+
+end intrinsic;
+
+
+intrinsic createGamma1Gamma2Lattice(alpha::FldNumElt,beta::FldNumElt,m::RngIntElt,zeta_m::FldNumElt,R::RngOrd)->AlgMatElt
+{Creates the matrix that generates the lattice, generated by (gamma_1,gamma_2) with gamma_1 alpha - gamma2 = 0 (mod beta)}
+	d := Degree(R);
+	KroneckerDelta := func< i,j | i eq j select 1 else 0>;
+	M := ZeroMatrix(Integers(),0,2*d);
+
+	Mbeta := BasisMatrix(ideal<R|beta>);
+	Mbeta := LLL(Mbeta);
+	alpha := elementReductionModuloMatrix(R!alpha,Mbeta,R,m);
+
+	for i in [1..d] do
+		gamma1 := R! ([ KroneckerDelta(i,j) : j in [1..d] ]);
+		gamma2 := elementReductionModuloMatrix(alpha*gamma1,Mbeta,R,m);
+		MatrixRow := Matrix(Integers(),1,2*d, Eltseq(gamma1) cat Eltseq(gamma2));
+		M := VerticalJoin(M,MatrixRow);
+		//print "Dit is:",(gamma1*alpha - gamma2) mod ideal<R|beta>;
+	end for;
+
+	M := VerticalJoin(M,HorizontalJoin(Mbeta,ZeroMatrix(Integers(),d,d)));
+	M := VerticalJoin(M,HorizontalJoin(ZeroMatrix(Integers(),d,d),Mbeta));
+	return M;
+end intrinsic;
+
+intrinsic elementReductionModuloMatrix(alpha::RngOrdElt,M::AlgMatElt,R::RngOrd, m::RngIntElt)->FldNumElt
+{Reduces an element modulo a matrix (mostly a basis matrix of an ideal); this version includes some randomness}
+	KroneckerDelta := func< i,j | i eq j select Rationals()!1 else Rationals()!0>;
+	
+	v_alpha := Vector(Eltseq(R!alpha));
+		MQ := ChangeRing(M,Rationals());
+		vQ := ChangeRing(v_alpha,Rationals());
+		w := Solution(MQ,vQ); // MQ*w = vQ, finds w.
+		wR := Vector([ Rationals()!Round(w[i]) : i in [1..Degree(w)]]); // rounded vector of w
+		wR0 := wR;
+	repeat
+		k := Random([1..Degree(w)]);
+		wR := wR0 +  Vector(([ KroneckerDelta(k,j) : j in [1..Degree(w)] ])); // add some randomness
+		v_alpha_reduced := vQ - wR*MQ;	
+		alpha :=  R!Eltseq(v_alpha_reduced);
+	until GCD(Norm(alpha),m) eq 1;
+
+	return alpha;
+end intrinsic;
+
+intrinsic elementReductionModuloMatrix(alpha::RngOrdElt,M::AlgMatElt,R::RngOrd)->FldNumElt
+{Reduces an element modulo a matrix (mostly a basis matrix of an ideal)}	
+		v_alpha := Vector(Eltseq(R!alpha));
+		MQ := ChangeRing(M,Rationals());
+		vQ := ChangeRing(v_alpha,Rationals());
+		w := Solution(MQ,vQ); // MQ*w = vQ, finds w.
+		wR := Vector([ Rationals()!Round(w[i]) : i in [1..Degree(w)]]); // rounded vector of w
+		v_alpha_reduced := vQ - wR*MQ;	
+		alpha :=  R!Eltseq(v_alpha_reduced);
+		return alpha;
+end intrinsic;
+
+intrinsic randomSmallVectorGeneratedByRows(M::AlgMatElt, support::RngIntElt)->SeqEnum
+{Computes a small linear combination of the first "support" vectors of M}
+		randomPlusMinusOneVector := Vector([Random(-1,1) : j in [1..support]]  cat [0 : j in [1..(NumberOfRows(M) - support)]]);
+		return Eltseq(randomPlusMinusOneVector*M);
+end intrinsic;
+
+intrinsic randomSmallVectorGeneratedByRows(M::ModMatRngElt, support::RngIntElt)->SeqEnum
+{Computes a small linear combination of the first "support" vectors of M}
+		randomPlusMinusOneVector := Vector([Random(-1,1) : j in [1..support]]  cat [0 : j in [1..(NumberOfRows(M) - support)]]);
+		return Eltseq(randomPlusMinusOneVector*M);
+end intrinsic;
+
+
+intrinsic coefficientNorm(alpha::Any)->RngIntElt
+{Returns the the maximum absolute value of the coefficients}
+	return Max( [Abs(c) : c in Eltseq(alpha)] );
+
+end intrinsic;
+
+
+/*
+// Optimization.
+intrinsic factorPrimePartOfIdeal(cIdeal::RngOrdIdl, p::RngIntElt, power::RngIntElt)->SeqEnum
+{}
+	R := Order(cIdeal);
+	pPrimaryIdeal := GCD(cIdeal,ideal<R|p>);	
+	NormOfpPrimaryIdeal := Norm(pPrimaryIdeal);
+
+	FactorizationOfpPrimaryIdeal := Factorization(pPrimaryIdeal);
+
+	if (power eq Valuation(NormOfpPrimaryIdeal,p)) then
+		return FactorizationOfpPrimaryIdeal;
+	end if;
+
+
+	for tuple in FactorizationOfpPrimaryIdeal do
+		primeIdeal := tuple[1];
+		primeIdealPower := tuple[2];
+		NormPrimeIdeal := Norm(primeIdeal);
+
+	end for;
+
+end intrinsic;
+*/

@@ -1,0 +1,58 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+intrinsic getPthPowerRootOfUnity(F::FldPad,k::RngIntElt,precision::RngIntElt)->FldPadElt
+{Computes the p^k-th root of unity, say: zeta_(p^k)}
+    reqPrec := requiredPrecision(F,"getPthPowerRootOfUnity",k);
+	require precision ge reqPrec: Sprintf("Given precision not high enough for the computation of highest pth power root of unity; needed: %o",reqPrec);
+	require Precision(F) ge precision: Sprintf("Given field (precision = %o) doesn't have precision bigger than given precision (= %o)",Precision(F),precision);
+
+    ChangePrecision(~F,precision);
+    p := Prime(F);
+    e := AbsoluteRamificationDegree(F);
+    r := Valuation(e div (p-1) ,p);
+
+    complement_r := r + 1 - k;
+
+    superfluousElt,baseOfSuperfluousElt := superfluousElement(F);
+    exponents,gPU := exponentialRepresentation(superfluousElt,precision);
+    pk := p^k;
+    exponents_div_pk := func< t | exponents(t) div pk >;
+
+    return exponentiate(gPU,exponents_div_pk)*baseOfSuperfluousElt^(-p^complement_r);
+
+end intrinsic;
+
+intrinsic pValuationOfNumberOfRootsOfUnity(F::FldPad)->RngIntElt
+{Returns the p-valuation of the number of roots of unity in F}
+    e := AbsoluteRamificationDegree(F);
+    p := Prime(F);
+    if (e div (p-1) eq 1) then return 1; end if;
+
+
+    reqPrec := requiredPrecision(F,"pValuationOfNumberOfRootsOfUnity");
+	require Precision(F) ge reqPrec: Sprintf("Given field has not required precision; needed: %o",reqPrec);
+    ChangePrecision(~F,reqPrec);
+    p := Prime(F);
+    superfluousElt,baseOfSuperfluousElt := superfluousElement(F);
+    exponents,gPU := exponentialRepresentation(superfluousElt,reqPrec);
+    
+    baseUnits := getBaseUnits(gPU);
+    r :=  Min( [ Valuation(exponents(t),p) : t in baseUnits]);
+    return r;
+    // So, the p-valuation of the number of roots of unity m in F 
+ 	// equals the minimum of the p-valuations of the exponents
+ 	// of the superfluous element.
+
+end intrinsic;

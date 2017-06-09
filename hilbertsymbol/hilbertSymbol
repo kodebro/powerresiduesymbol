@@ -1,0 +1,417 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+
+
+// Notice: The ideal of the form ideal<R|m> must be given as input
+
+intrinsic umkehrFaktor(alpha::FldNumElt,beta::FldNumElt,IdealOfM::RngOrdIdl,zeta_m::FldNumElt)->RngIntResElt
+{Calculates the umkehrFaktor, that is: prod_(prime dividing m) hilbertSymbol(alpha,beta,prime) }
+	//R := RingOfIntegers(Parent(alpha));
+	//IdealOfM := ideal<R|m>;
+	mFactorization := Factorization(IdealOfM);
+	m := MinimalInteger(IdealOfM); // equals m
+	primeFactorsOfM := [ mFactorization[i][1] : i in [1..#mFactorization]];
+
+	symbol := 0;
+	for pi in primeFactorsOfM do
+		symbol +:= hilbertSymbol(alpha,beta,pi,m,zeta_m);
+	end for;
+
+	return symbol,zeta_m;
+
+end intrinsic;
+
+intrinsic umkehrFaktor(alpha::RngOrdElt,beta::RngOrdElt,IdealOfM::RngOrdIdl,zeta_m::FldNumElt)->RngIntResElt
+{Overload }
+	L := Parent(zeta_m);
+	return umkehrFaktor(L!alpha,L!beta,IdealOfM,zeta_m);
+end intrinsic;
+
+
+// GLOBAL hilbert symbol
+
+intrinsic hilbertSymbol(alpha::FldNumElt,beta::FldNumElt,pi::RngOrdIdl,m::RngIntElt,zeta_m::FldNumElt)->RngIntResElt
+{Computes the hilbert symbol with input: global field elements}
+	L := Parent(alpha);
+	require beta in L: "The second argument is not in the same field as the first argument.";
+	require zeta_m in L: "The given root of unity is not in the same field as the first argument.";
+
+	if (Category(L) eq FldCyc) then
+		L_pi,map_pi := CyclotomicCompletion(L,pi,m,zeta_m,requiredPrecision(L,pi,"hilbertSymbol"));
+	else
+		L_pi,map_pi := Completion(L,pi : precision := requiredPrecision(L,pi,"hilbertSymbol"));
+	end if;
+
+	zeta_pi := L_pi!map_pi(zeta_m);
+
+	a := L_pi!map_pi(alpha);
+	b := L_pi!map_pi(beta);
+	power, zeta := hilbertSymbol(a,b,m,zeta_pi);
+	return power;
+
+end intrinsic;
+
+
+
+
+
+intrinsic hilbertSymbol(x::FldPadElt,y::FldPadElt,m::RngIntElt,zeta_m::FldPadElt)->RngIntResElt,FldPadElt
+{Computes the hilbert symbol, a combination of the tame- and the wild hilbert symbol}
+	F := Parent(x);
+	require y in F: "The second argument is not in the same field as the first argument.";	
+	require zeta_m in F: "The given root of unity is not in the same field as the first argument.";
+
+	p := Prime(F);
+	r,b := Valuation(m,p);
+	// ---------------------------------------------------------------
+	// TAME CASE -----------------------------------------------------
+	// ---------------------------------------------------------------
+	// The case that there is no wild symbol, i.e. p and m are coprime,
+	// is easy; we only have to calculate the tame symbol.
+	// ---------------------------------------------------------------	
+		if (r eq 0) then
+			tameSymbol,zeta_tame := tameHilbertSymbol(x,y,b,zeta_m);
+			return Integers(m)!tameSymbol,zeta_tame;
+		end if;	
+	
+	// -------------------------
+	// WILD CASE ---------------
+	// -------------------------
+	// If p and m are not coprime, we have m = p^r*b, with r > 0
+	
+		// We have to check if: r <= pValOf # roots of unity
+		pValuationOfNumberOfRootsOfUnity := pValuationOfNumberOfRootsOfUnity(F);
+		require r le pValuationOfNumberOfRootsOfUnity: Sprintf("The p-valuation of m ( = %o) is bigger then the pValuation of the number of roots of unity ( = %o)",r,pValuationOfNumberOfRootsOfUnity);
+
+		
+		// According to the formula on page 5
+		// of Michiel Kosters summary, we have - 
+		// If: m = b*p^r, then:
+		//
+		// (x,y)_m = [ (x,y)_b ]^s [ (x,y)_{p^r} ]^t
+		//
+		// Where b*t + p^r*s = 1
+			
+		buf,t,s := XGCD(b,p^r);
+
+		zeta_tame := zeta_m^(p^r);
+		zeta_wild := zeta_m^b;
+		tameSymbol := tameHilbertSymbol(x,y,b,zeta_tame);
+		wildSymbol := wildHilbertSymbol(x,y,r,pValuationOfNumberOfRootsOfUnity,zeta_wild);
+		
+		// Now, written in zeta, the following holds:
+		// (x,y)_b = zeta^(tamesym*p^r)
+		// (x,y)_{p^r} = zeta^(wildsym*b)
+		// So:
+		// (x,y)_m = zeta^[  tamesym*p^r*s + wildsym*b*t ]
+		tameSymbol := Integers()!tameSymbol;
+		wildSymbol := Integers()!wildSymbol;		
+		return Integers(m)! (tameSymbol*p^r*s + wildSymbol*b*t), zeta_m;
+
+end intrinsic;
+
+
+// Computes the tame hilbert symbol (x,y)_m, 
+// where p does not divide m.
+
+intrinsic tameHilbertSymbol(x::FldPadElt,y::FldPadElt,m::RngIntElt,zeta_m::FldPadElt)->RngIntResElt,FldPadElt
+{Computes the tame hilbert symbol (x,y)_m, where p does not divide m.}
+	F := Parent(x);
+	require y in F: "The second argument is not in the same field as the first argument.";	
+	require zeta_m in F: "The given root of unity is not in the same field as the first argument.";
+
+	p := Prime(F);
+	f := AbsoluteInertiaDegree(F);
+	ResFld<t> := ResidueClassField(Integers(F));
+
+	NumberOfTameRootsOfUnity := p^f - 1;
+	require NumberOfTameRootsOfUnity mod m eq 0: Sprintf("Given m (= %o) is not tame, since it does not divide p^f - 1",m);
+
+	valx := Valuation(x); 
+	valy := Valuation(y);
+	if (IsEven(valx) or IsEven(valy)) then sgn := 1; else sgn := -1; end if;
+	symbolInResFld := (  sgn*((ResFld!y)^valx)/((ResFld!x)^valy)  )^((p^f-1) div m);	
+
+	return Log(ResFld!zeta_m,symbolInResFld), zeta_m;
+
+
+end intrinsic;
+
+
+
+	// we compute now
+	// isomorphicSymbol(t,zeta_{p^m})
+	// and
+	// calibrationSymbol(t,zeta_{p^m})
+	// for some t in the "generating principal units"
+	// 
+	// They are related multiplicatively:
+	// isomorphicSymbol(x,y)^c = wildHilbertSymbol(x,y), for all x,y.
+	// 
+	// we use the calibration symbol to get the c.
+
+
+intrinsic wildHilbertSymbol(x::FldPadElt,y::FldPadElt,pthPowerHilbertModulus::RngIntElt,pValuationOfNumberOfRootsOfUnity::RngIntElt)->RngIntResElt,FldPadElt
+{Calculates the wild hilbert symbol, using isomorphic symbol and calibration symbol}
+	require pValuationOfNumberOfRootsOfUnity ge pthPowerHilbertModulus: Sprintf("The pvaluation of the number of roots of unity (=%o) needs to be >= than the pthPowerHilbertModulus (=%o)",pValuationOfNumberOfRootsOfUnity,pthPowerHilbertModulus);
+	F := Parent(x);
+	pi := UniformizingElement(F);
+	p := Prime(F);
+
+	require y in F: "The second argument is not in the same field as the first argument.";
+
+	// calibrationSymbol needs higher precision of the Basis Principal Units.
+	reqPrecCalibration := requiredPrecision(F,"wildHilbertSymbol_calibrationSymbol",pthPowerHilbertModulus,pValuationOfNumberOfRootsOfUnity);
+	require Precision(F) ge reqPrecCalibration: Sprintf("The parent field has not enough precision to compute the calibration symbol; needed: %o",reqPrecCalibration);
+
+	reqPrecRootOfUnity := requiredPrecision(F,"wildHilbertSymbol_PthPowerRootOfUnity",pthPowerHilbertModulus,pValuationOfNumberOfRootsOfUnity);
+	require Precision(F) ge reqPrecRootOfUnity: Sprintf("The parent field has not enough precision to compute the highest pth-power root of unity; needed: %o",reqPrecRootOfUnity);
+
+	zeta := getPthPowerRootOfUnity(F,pValuationOfNumberOfRootsOfUnity,reqPrecRootOfUnity);
+	// zeta is now the highest possible pth-power root of unity. 
+	// Say:
+	// zeta_{p^k} with k maximal.
+
+
+	isoSymbolOfXY := isomorphicSymbol(x,y,pthPowerHilbertModulus);
+
+
+
+	F_calibration := ChangePrecision(F,reqPrecCalibration);
+	delta_calibration := weaklyDistinguishedUnit(F);
+	gPU_calibration := generatorsOfPrincipalUnits(F_calibration,F_calibration!pi,delta_calibration);
+	BaseUnits := getBaseUnits(gPU_calibration);
+
+	repeat 
+		b := Random(BaseUnits);
+		calibSymbolBaseElt := calibrationSymbol(b,pthPowerHilbertModulus,pValuationOfNumberOfRootsOfUnity);
+	until (Integers(p)!calibSymbolBaseElt ne 0);
+
+	// Computes (b,zeta)_{p^m}, with m the hilbertsymbolmodulus
+	// via the calibration symbol
+
+	isoSymbolBaseElt := isomorphicSymbol(b,zeta,pthPowerHilbertModulus);
+
+	c := isoSymbolBaseElt^(-1) * calibSymbolBaseElt; 
+	// c relates the isomorphic symbol to the real wild hilbert symbol
+
+	zeta := zeta^(p^(pValuationOfNumberOfRootsOfUnity-pthPowerHilbertModulus));
+	// Now, zeta is a p^pthPowerHilbertModulus root of unity
+
+	return Integers(p^pthPowerHilbertModulus) ! ( c*isoSymbolOfXY ), F!zeta;
+
+
+
+
+end intrinsic;
+
+intrinsic wildHilbertSymbol(x::FldPadElt,y::FldPadElt,pthPowerHilbertModulus::RngIntElt,pValuationOfNumberOfRootsOfUnity::RngIntElt,givenRootOfUnity::FldPadElt)->RngIntResElt,FldPadElt
+{Overloads wildHilbertSymbol, but calculates in a given root of unity}
+	F := Parent(x);
+	p := Prime(F);
+	require givenRootOfUnity in F: "The given root of unity needs to be in the same field as the first argument.";	
+
+
+	wildSymbolXY, zeta := wildHilbertSymbol(x,y,pValuationOfNumberOfRootsOfUnity,pthPowerHilbertModulus);
+	// But, both symbols have their power given in base number "zeta", 
+	// but we want them to be given in "givenRootOfUnity". Let's fix that
+	// and write zeta = givenRootOfUnity^LogOfZeta
+	LogOfZeta := RootOfUnityLogarithm(givenRootOfUnity,zeta,p^pthPowerHilbertModulus);
+
+	return Integers(p^pthPowerHilbertModulus)! ( LogOfZeta*wildSymbolXY ) , givenRootOfUnity;
+
+
+
+end intrinsic;
+
+intrinsic wildHilbertSymbol(x::FldPadElt,y::FldPadElt)->RngIntResElt,FldPadElt
+{Overloads wildHilbertSymbol}
+	F := Parent(x);
+	pValOfNumberOfRootsOfUnity := pValuationOfNumberOfRootsOfUnity(F);
+	pthPowerHilbertModulus := pValOfNumberOfRootsOfUnity;
+	return wildHilbertSymbol(x,y,pValOfNumberOfRootsOfUnity,pthPowerHilbertModulus);
+
+end intrinsic;
+
+
+
+// As in lemma 4.2 of Michiel Kosters summary.
+
+// Input: 	- x, an element of F*
+// 			- n, we want to compute the p^n-th Hilbert norm residue symbol:
+//
+// 			(x,\zeta_{p^m})_{p^n} = \zeta_{p^n}^t
+//
+//			where n is the pthPowerHilbertModulus
+// 			where m is the pValuationOfNumberOfRootsOfUnity
+// 
+//	Output: - t mod p^n, with t as in the formula			
+//
+intrinsic calibrationSymbol(x::FldPadElt,pthPowerHilbertModulus::RngIntElt,pValuationOfNumberOfRootsOfUnity::RngIntElt)->RngIntResElt
+{Calculates the "Calibration symbol", which translates the isomorphic symbol to the true hilbert symbol}
+	F := Parent(x);
+	p := Prime(F);
+	Zp := BaseField(BaseField(F)); // assumed that F is given in ramified representation
+	normOfx := Norm(x,Zp);
+	r := Valuation(normOfx);
+	x_star := normOfx div p^r;
+
+	require (Precision(Zp) gt pthPowerHilbertModulus + pValuationOfNumberOfRootsOfUnity): Sprintf("The precision %o is too small; needed: %o.\n",Precision(x_star),pthPowerHilbertModulus + pValuationOfNumberOfRootsOfUnity);	
+
+	power := (x_star^(-1) - 1) div p^pValuationOfNumberOfRootsOfUnity;
+	return Integers(p^pthPowerHilbertModulus)!(Integers()!power);
+end intrinsic;
+
+
+
+intrinsic isomorphicSymbol(x::FldPadElt,y::FldPadElt,pthPower::RngIntElt)->RngIntResElt
+{Calculates the "isomorphic symbol" to the hilbert symbol}
+	F := Parent(x);
+	require y in F: "The second argument is not in the field of the first argument.";
+	valx := Valuation(x);
+
+	p := Prime(F);
+	pi := UniformizingElement(F);	
+	u := normalizeByPi(x,-pi); // TODO: normalize by -pi?
+
+
+	// We are following section 3 of michiel kosters summary here
+	piprime := pi*u;
+	delta := weaklyDistinguishedUnit(F);
+
+	R := Integers(p^pthPower);
+	// R is the ring modulo p^pthPower
+
+	if ((p eq 2) and (pthPower eq 1)) then
+		c := 1;
+	else
+		c0 := powerOfDistinguishedUnit(pi,piprime,delta,pthPower);
+		c1 := powerOfDistinguishedUnit(piprime,pi,delta,pthPower);
+		if (c0 mod p ne 0) then
+			c0 := R!c0; 
+			c1 := R!c1;
+			c := -c1/c0;
+		else
+			piprimeprime := -1*delta*piprime;
+			if (p ne 2) then
+				c2 :=R!(c1+1);
+				c3 := R!powerOfDistinguishedUnit(piprime,piprimeprime,delta,pthPower);
+				c4 := R!powerOfDistinguishedUnit(pi, piprimeprime,delta,pthPower);
+				c := c2*c3/c4;
+			else
+				// p = 2 here.
+				// Compute the p^r-th power root of unity
+				k := pValuationOfNumberOfRootsOfUnity(F);
+				reqPrecForPthRootOfUnity := requiredPrecision(F,"getPthPowerRootOfUnity",k);  
+				zeta := getPthPowerRootOfUnity(F,k,reqPrecForPthRootOfUnity);
+
+				dminonepi := p^(pthPower-1)*powerOfDistinguishedUnit(zeta,pi,delta,pthPower);
+				c2 := R!(c1 + 1 + dminonepi);
+				c3 := R!powerOfDistinguishedUnit(piprime,piprimeprime,delta,pthPower);
+				c4 := R!powerOfDistinguishedUnit(pi,piprimeprime,delta,pthPower);
+				c := c2*c3/c4;
+			end if;
+		end if;
+	end if;
+
+	yPowerOfDistUnit := powerOfDistinguishedUnit(y,pi,delta,pthPower);
+	yPowerOfDistUnitPrime := powerOfDistinguishedUnit(y,piprime,delta,pthPower);
+	return R!(yPowerOfDistUnit*(valx-1) + yPowerOfDistUnitPrime*c);
+end intrinsic;
+
+
+
+// Gives the power of delta in the exponential representation of x, up to precision "precisionOfDeltaExponent". That is:
+// writing with prime p and precision k, the exponent is written modulo p^k. 
+
+intrinsic powerOfDistinguishedUnit(x::FldPadElt,Pi::FldPadElt,Delta::FldPadElt, PrecisionOfDeltaExponent::RngIntElt)->RngIntElt
+{Returns the valuation of delta up to precision "PrecisionOFDeltaExponent"}
+	if Valuation(1-x) le 0 then x := normalizeByPi(x,Pi); end if;
+	//require Valuation(1-x) gt 0: "Field element is not a higher unit.";
+	F := Parent(x);
+	reqPrec := requiredPrecision(F,"powerOfDistinghuishedUnit",PrecisionOfDeltaExponent-1);
+	require Precision(F) ge reqPrec: Sprintf("Given field has not required precision; needed: %o",reqPrec);
+	ChangePrecision(~F,reqPrec);
+	gPU := generatorsOfPrincipalUnits(F,Pi,Delta);
+
+	exp := exponentialRepresentation(x,gPU,Pi,reqPrec);
+	return exp(Delta);
+
+end intrinsic;
+
+
+intrinsic CyclotomicCompletion(L::FldCyc,pi::RngOrdIdl,m::RngIntElt,zeta_m::FldNumElt,precision::RngIntElt)->FldPad,Map
+{Computes the completion of a cyclotomic number field. This completion is much faster than that of Magma}
+    p := MinimalInteger(pi);
+    d := Degree(L);
+    // m = b*p^r
+    r,b := Valuation(m,p);
+
+    // Decomposition of the degree in
+    // d = r * e * f,
+    // where e is the ramification degree of p
+    // 		 f is the inertia degree of p
+    //		 t are the amount of prime ideals of p
+    // --------------------------------------------  
+    	e := p^(r-1)*(p-1);
+    	if (b ne 1) then
+    	    f := Order(Integers(b)!p);
+    	else 
+    	    f := 1; 
+    	end if;
+    	
+
+
+    	t := d div (e*f);
+    // ---------------------------------------------
+    
+
+    // Constructs the completion of L
+    // ---------------------------------------------
+    	Fp := pAdicField(p,Ceiling(precision/e));
+    	UnramExt<t> := UnramifiedExtension(Fp,f);
+    
+    	g<x> := CyclotomicPolynomial(p^r);
+    	g := Evaluate(g,1+x);    
+    	F := ext<UnramExt|g>;
+
+    // ---------------------------------------------
+    
+
+    // Constructs the map L -> F = L_pi
+    // --------------------------------
+    	pValOfRootsOfUnity := pValuationOfNumberOfRootsOfUnity(F);
+	    zeta_wild := getPthPowerRootOfUnity(F,pValOfRootsOfUnity,precision);
+
+	    ResFld<t> := ResidueClassField(Integers(F));
+	    zeta_inertia := F!teichmuellerLiftExtended(F,t);
+	    zeta_tame := zeta_inertia^((p^f-1) div b);
+
+	    zeta := zeta_tame*zeta_wild;
+	    //print [Valuation(zeta^i-1): i in [1..m]];
+
+	        for i in [i : i in [1..m] |  Gcd(i,m) eq 1 ] do
+	            map := hom<L->F |  zeta^i>;
+	        	//print [Valuation(map(g)) : g in Generators(pi)];
+	            if (&and[Valuation(map(g)) gt 0 : g in Generators(pi)]) then  return F,map; end if;
+	        end for;
+        
+    //------------------------------------------
+    require false: Sprintf("In CyclotomicCompletion no proper embedding K->K_p is found, p = %o",p);  
+
+
+
+end intrinsic;

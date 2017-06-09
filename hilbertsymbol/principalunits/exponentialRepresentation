@@ -1,0 +1,78 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+intrinsic exponentialRepresentation(x::FldPadElt,gPU::genPrincUnits,Pi::FldPadElt,precision::RngIntElt)->UserProgram
+{Writes x = g_1^x_1 * g_2^x_2 ... g_t^x_t, for g_i the generators of the principal units, stored in gPU}
+    require Valuation(1-x) gt 0: "The element x is not a principal unit";
+    
+
+    F := Parent(x);
+    p := Prime(F);
+    e := AbsoluteRamificationDegree(F);
+    f := AbsoluteInertiaDegree(F);
+    e0 := e div (p-1);
+
+    hUR := hUnitsResFld(F,Pi);
+    exponents := AssociativeArray();
+
+    h := Valuation(1-x);
+    while h lt precision do
+        // Load the generators of the principal units of height h.
+        loadGeneratingSequenceOfHeight(~gPU,h);
+        // Get the generators of the principal units of height h.
+        Th, PthPowers, baseElements := gPU(h);
+        hUR_Th := [hUR ! s : s in Th];
+        exponents_h := coordinatesWithRespectTo(hUR!x, hUR_Th);
+        x := x* &*[ Th[i]^(- Integers()!exponents_h[i]) : i in [1..f]];
+        
+        for i in [1..f] do
+            if (not IsDefined(exponents,baseElements[i]) ) then
+                exponents[baseElements[i]] := 0;
+            end if;
+            exponents[baseElements[i]] +:= p^PthPowers[i]*(Integers()!exponents_h[i]);
+        end for;
+        h := Valuation(1-x);
+        
+    end while;
+    
+    return func< t | IsDefined(exponents,t) select exponents[t] else 0>;
+end intrinsic;
+
+// Overloads
+intrinsic exponentialRepresentation(x::FldPadElt,precision::RngIntElt)->UserProgram,Assoc
+{Overload of exponentialRepresentation}
+    F := Parent(x);
+    pi := UniformizingElement(F);
+    delta := weaklyDistinguishedUnit(F,pi);
+    gPU := generatorsOfPrincipalUnits(F,pi,delta);
+
+    exponents := exponentialRepresentation(x,gPU,pi,precision);
+    return exponents,gPU;
+end intrinsic;
+
+
+
+intrinsic exponentiate(gPU::genPrincUnits,exponents::UserProgram)->FldPadElt
+{Computes x from the exponential representation of x}
+        baseUnits := getBaseUnits(gPU);
+        x := 1;
+        x := x * &*[ t^exponents(t) : t in baseUnits ];
+
+        //x *:= delta^exponentsOfGPU[delta];
+        return x;
+end intrinsic;
+
+
+
+

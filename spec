@@ -1,0 +1,14 @@
+ibeta
+powerResidueSymbol
+hilbertsymbol
+{
+getPthPowerRootOfUnity
+hilbertSymbol
+    principalunits
+    {
+        localFieldFunctions
+        higherUnitsResidue
+        generatorsPrincipalUnits
+        exponentialRepresentation
+    }
+}

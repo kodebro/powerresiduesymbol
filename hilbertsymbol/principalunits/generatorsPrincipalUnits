@@ -1,0 +1,152 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+
+declare type genPrincUnits[genPrincUnitsSeq];
+declare attributes genPrincUnits: Field,Pi,Delta,Generators,e0,p; 
+declare attributes genPrincUnitsSeq: GeneratorSequence,PthPowerSequence,BaseElementSequence,Parent;
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ CONSTRUCTORS ------------
+// --------------------------------------
+
+// Constructs genPrincUnitsSeq object. It stores 
+// [t^(p^r) : t in U_i]  [ r, r , r ,..., r],
+// except when the distinguished unit is involved.
+// 
+// Those sets are called U_i^{p^r} in the summary 
+// of Michiel Kosters. 
+intrinsic generatorsOfPrincipalUnitsSequence(GeneratorSequence::SeqEnum,PthPowerSequence::SeqEnum,BaseElementSequence)->genPrincUnitsSeq
+{Creates a generator-of-Principal-Units sequence}
+    gPUS := New(genPrincUnitsSeq);
+    gPUS`GeneratorSequence := GeneratorSequence;
+    gPUS`PthPowerSequence := PthPowerSequence;
+    gPUS`BaseElementSequence := BaseElementSequence;
+    return gPUS;
+end intrinsic;
+
+// Constructs genPrincUnits object, which is a universe
+// for storing the sets U_i^{p^r}
+intrinsic generatorsOfPrincipalUnits(F::FldPad,Pi::FldPadElt,Delta::FldPadElt)->genPrincUnits
+{Computes the generators of the principal units}
+    require (Pi in F and Delta in F): "The uniformizer, residue-field generating element, or distinguished unit is not in the given field";
+    require (Valuation(Pi) eq 1): "Given uniformizer is does not have valuation 1";
+    e := AbsoluteRamificationDegree(F);
+    f := AbsoluteInertiaDegree(F);    
+    p := Prime(F);
+    e0 := e div (p-1);
+    gPU := New(genPrincUnits);  
+    gPU`Field := F;
+    gPU`Pi := Pi;
+    gPU`Delta := Delta;
+    gPU`p := p;
+    gPU`e0 := e0;
+    
+    ResFld<t> := ResidueClassField(RingOfIntegers(F));
+    omega_gamma := teichmuellerLiftExtended(F,t);
+    
+    J := [ j : j in [1..(p*e0-1)] | j mod p ne 0 ];
+    gPU`Generators := AssociativeArray(Integers());
+    for j in J do
+        gPU`Generators[j] := generatorsOfPrincipalUnitsSequence([1 - omega_gamma^i * Pi^j : i in [0..(f-1)]], [ 0 : i in [0..(f-1)] ], [1 - omega_gamma^i * Pi^j : i in [0..(f-1)]]);
+    end for;
+    return gPU;
+end intrinsic;
+
+
+intrinsic getBaseUnits(gPU::genPrincUnits)->SeqEnum
+{Returns the basis-generating elements}
+    p := gPU`p;
+    e0 := gPU`e0;
+    J := [ j : j in [1..(p*e0-1)] | j mod p ne 0 ];    
+    return (&cat [ gPU(j) : j in J]) cat [gPU`Delta];
+
+end intrinsic;
+
+//
+
+
+intrinsic loadGeneratingSequenceOfHeight(~gPU::genPrincUnits,h::RngIntElt)
+{Blah}
+    p := gPU`p;
+    e0 := gPU`e0;
+    e := e0*(p-1);
+
+    if IsDefined(gPU`Generators,h) then return; end if;
+    if (h eq p*e0) then
+        // This is the special case, where the superfluous element needs to be replaced by
+        // the weakly distinguished unit, Delta.
+        h_prev := h div p;
+        // call recursively
+        loadGeneratingSequenceOfHeight(~gPU,h_prev);
+        genSeq, PthPowerSeq, BaseEltSeq := gPU(h_prev); 
+        
+        // Take p-th powers
+        genSeq := [g^p : g in genSeq];
+        PthPowerSeq := [m + 1 : m in PthPowerSeq];        
+        
+        // compute superfluousElement
+        superfluousElt := superfluousElement(gPU`Field,gPU`Pi);
+        // get the index inside genSeq
+        indexOfSuperfluousElt := Index(genSeq,superfluousElt);
+        // remove the superfluous element, and its p-th power
+        Remove(~genSeq,indexOfSuperfluousElt);
+        Remove(~BaseEltSeq,indexOfSuperfluousElt);
+        Remove(~PthPowerSeq,indexOfSuperfluousElt);
+
+        // append the distinguished unit at the end, add the p-th power, which is zero.
+        Append(~genSeq,gPU`Delta);
+        Append(~BaseEltSeq,gPU`Delta);
+        Append(~PthPowerSeq,0);
+        // add to the generators
+        gPU`Generators[h] := generatorsOfPrincipalUnitsSequence(genSeq,PthPowerSeq,BaseEltSeq);
+        return;
+    
+    end if;
+
+    // get "previous" h
+    if ((h le p*e0) and (h mod p eq 0)) then h_prev := h div p; else h_prev := h - e; end if;
+    // call recursively
+    loadGeneratingSequenceOfHeight(~gPU,h_prev);
+    genSeq, PthPowerSeq, BaseEltSeq := gPU(h_prev);
+    
+    // Take p-th powers
+    genSeq := [g^p : g in genSeq];
+    PthPowerSeq := [m + 1 : m in PthPowerSeq];
+    
+    // Put in the object
+    gPU`Generators[h] := generatorsOfPrincipalUnitsSequence(genSeq,PthPowerSeq,BaseEltSeq);
+        
+end intrinsic;
+
+intrinsic '@'(h::RngIntElt,gPU::genPrincUnits)->SeqEnum,SeqEnum
+{Returns the generators of height h, one can get this by gPU(h)}
+    if IsDefined(gPU`Generators,h) then 
+        return gPU`Generators[h]`GeneratorSequence, gPU`Generators[h]`PthPowerSequence, gPU`Generators[h]`BaseElementSequence;
+    end if;
+    error Error("The generators of the principal units of this heights are not loaded yet. Load them by 'loadGeneratingSequenceOfHeight(~gPU,h)'."); 
+end intrinsic;
+
+
+/*
+intrinsic Parent(gPU_Elt::genPrincUnitsElt)->genPrincUnits
+{Returns the parent of generators-of-principal-units element}
+    return gPU_Elt`Parent;
+end intrinsic;
+*/
+
+

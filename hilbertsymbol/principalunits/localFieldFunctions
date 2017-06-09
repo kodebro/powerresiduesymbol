@@ -1,0 +1,138 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+
+intrinsic hasPthRootOfUnity(F::FldPad)->BoolElt
+{Returns whether F has a p-th primitive root of unity or not}	
+	e := AbsoluteRamificationDegree(F);
+	f := AbsoluteInertiaDegree(F); 
+    p := Prime(F);
+	if ((e mod (p-1)) ne 0) then return false; end if; // if p-1 does not divide e, there's no pth root of unity
+	
+	pi := UniformizingElement(F);
+	ResFld := ResidueClassField(Integers(F));
+
+	// as in Michiel Kosters summary, above Proposition 2.1, write: p = -u_0*pi^e	
+	u_0 := -1* p/pi^e;
+	if (Norm(ResFld ! u_0) eq 1) then  return true; else return false; end if; 
+end intrinsic;
+
+intrinsic teichmuellerLiftExtended(F::FldPad,x::FldFinElt)->FldPadElt
+{Finds the 'extended' teichmueller lift of an element}
+        if (IsRamified(F)) then
+                K := BaseField(F);
+        else K := F;
+        end if;
+        R := RingOfIntegers(K);
+        n := Precision(K);
+        RR := quo<R | Prime(K)^n>;
+        lift_x := TeichmuellerLift(x,RR);
+        return F!(K!lift_x);
+end intrinsic;
+
+intrinsic normalizeByPi(x::FldPadElt, Pi::FldPadElt)->FldPadElt
+{"Normalizes" x by Pi, such that it is an element in the principal units}
+    F := Parent(x);
+    x0 :=  x/((-Pi)^Valuation(x));
+    ResFld := ResidueClassField(Integers(F));
+    x0bar_lift := teichmuellerLiftExtended(F,ResFld!x0); 
+    return x0/x0bar_lift; 
+end intrinsic;
+
+
+intrinsic RootOfUnityLogarithm(BaseRoot::FldPadElt,ArgumentRoot::FldPadElt,maximumOrder::RngIntElt)->RngIntElt
+{Given a Base root of unity zeta, and a Argument root of unity phi, it finds c such that zeta^c = phi}
+    F := Parent(BaseRoot);
+    p := Prime(F);
+    e := AbsoluteRamificationDegree(F);
+    precision := p*e div (p-1);
+    for k in [1..maximumOrder] do
+        if (Valuation(BaseRoot^k - ArgumentRoot) ge precision) then return k; end if;
+    end for;
+    require false: "No logarithm found of the root of unity.";
+end intrinsic;
+
+
+
+intrinsic requiredPrecision(F::FldNum,pi::RngOrdIdl,arguments::Any,...)->RngIntElt
+{Returns the minimum required precision to be able to compute the function in the flag, global version}
+    e := RamificationDegree(pi);
+    p := MinimalInteger(pi);
+    e0 := e div (p-1);
+    r,b := Valuation(e0,p);
+    flag := arguments[1];   
+
+    if (flag eq "hilbertSymbol") then 
+        //pValuationOfNumberOfROotsOfUnity := r+1; // Not true, but at most r + 1.
+        precision := p*e0 + 2*(r+1)*e;
+    end if;
+
+    return precision;
+end intrinsic;
+
+intrinsic requiredPrecision(F::FldPad,arguments::Any,...)->RngIntElt
+{Returns the minimum required precision to be able to compute the function in the flag}
+    e := AbsoluteRamificationDegree(F);
+    p := Prime(F);
+    e0 := e div (p-1);
+    r,b := Valuation(e0,p);
+    flag := arguments[1];
+
+    if (flag eq "ibeta") then
+        precision := p*e0 + (r+1)*e + 1;
+    end if;
+
+    if (flag eq "powerOfDistinghuishedUnit") then
+        k := arguments[2];
+        precision := p*e0 + k*e + 1;
+    end if;
+
+    if (flag eq "getPthPowerRootOfUnity") then
+        if IsDefined(arguments,2) then k := arguments[2]; else k := r+1; end if;
+        // k is supposed to be the power of the 'wanted' p^k th root of unity
+        precision :=  p*e0 + k*e + 1;
+        // maybe add  +1?
+        // TODO not sure about this
+    end if;
+     if (flag eq "pValuationOfNumberOfRootsOfUnity") then
+        precision :=  p*e0 + (r+1)*e + 1;
+        // TODO Changed this from r to r+1
+    end if;
+
+    if (flag eq "wildHilbertSymbol_calibrationSymbol") then
+        pthPowerHilbertModulus := arguments[2];
+        pValuationOfNumberOfRootsOfUnity := arguments[3];
+        // old program said:
+        // d := AbsoluteDegree(F);
+        // precision := Max(d*(pthPowerHilbertModulus + pValuationOfNumberOfRootsOfUnity + 1) , p*e0 + (r+1)*e );
+        precision := Max(e*(pthPowerHilbertModulus + pValuationOfNumberOfRootsOfUnity + 1), p*e0 + (r+1)*e );
+    end if;
+
+    if (flag eq "wildHilbertSymbol_PthPowerRootOfUnity") then
+        pthPowerHilbertModulus := arguments[2];
+        pValuationOfNumberOfRootsOfUnity := arguments[3];
+        precision := p*e0 + (r+1)*e + pValuationOfNumberOfRootsOfUnity*e;
+    end if;
+
+//    if (flag eq "hilbertSymbol") then
+//        precision := Max(e*(pthPowerHilbertModulus + pValuationOfNumberOfRootsOfUnity + 1), p*e0 + (r+1)*e , p*e0 + (r+1)*e + pValuationOfNumberOfRootsOfUnity*e);
+//    end if;
+
+    
+    require (precision le Precision(F)): Sprintf("The precision of F is too small to compute the function %o. Needed: %o\n",flag,precision);
+  
+    return precision;
+
+end intrinsic;
+

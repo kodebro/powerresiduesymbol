@@ -1,0 +1,370 @@
+/* Copyright (C) 2017 Koen de Boer
+
+   This file is part of the powerresiduesymbolcalculator. the powerresiduecalculator
+   is free software: you can redistribute it and/or modify it under the terms of the 
+   GNU Lesser General Public License as published by the Free Software Foundation,
+   either version 2.1 of the License, or (at your option) any later version.
+
+   The powerresiduesymbolcalculator is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+   FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public License
+   along with powerresiduesymbolcalculator. If not, see <http://www.gnu.org/licenses/>. */
+
+declare type higherUnitsResFld[higherUnitsResFldElt];
+declare attributes higherUnitsResFld: Field, Pi, ResFld, VectorSpace, Mapping; 
+declare attributes higherUnitsResFldElt: Value,Height,Parent;
+
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ CONSTRUCTORS ------------
+// --------------------------------------
+
+// Constructs higherUnitsResFld object
+intrinsic hUnitsResFld(F::FldPad,Pi::FldPadElt)->higherUnitsResFld
+{Creates a higher units residue class field framework for F}
+    require (Pi in F): "Uniformizer is not in the given field";
+    require (Valuation(Pi) eq 1): "Given element is not an uniformizer";
+    hURF := New(higherUnitsResFld);
+    hURF`Field := F;
+    hURF`Pi := Pi;
+    hURF`ResFld := ResidueClassField(RingOfIntegers(F));
+    p := Prime(F);
+    hURF`VectorSpace, hURF`Mapping := VectorSpace(hURF`ResFld,GF(p));
+    return hURF;
+end intrinsic;
+
+// Overloaded contructor for hUnitsResElt. One first have to give the object
+// where the element belongs to.
+
+intrinsic element(hURF::higherUnitsResFld, value::FldFinElt, h::RngIntElt)->higherUnitsResFldElt
+{Creates an element of the higher units residue hURF: 1 + value*Pi^Height}
+        require (value in hURF`ResFld): "Second argument not in the residue class field";
+        require (h gt 0): "Index out of bound";
+        hURF_Elt := New(higherUnitsResFldElt);
+        hURF_Elt`Value := value;
+        hURF_Elt`Height := h;
+        hURF_Elt`Parent := hURF;
+        return hURF_Elt;
+end intrinsic;
+
+/*
+intrinsic pthPower(hURF_Elt::higherUnitsResFldElt)->higherUnitsResFldElt
+{This functional intrinsic takes the p-th power of the higher units residue field element}
+        hURF := hURF_Elt`Parent;
+        Pi := hURF`Pi;
+        e := AbsoluteRamificationDegree(hURF`Field);
+        p := Prime(hURF`Field);
+        Height := hURF_Elt`Height;
+        ResFld := hURF`ResFld;
+        e0 := e div (p-1);
+
+        if (Height lt e0) then
+                return element(hURF,hURF_Elt`Value^p,Height*p);
+        elif (Height gt e0) then
+                return element(hURF,hURF_Elt`Value * ResFld!(p/Pi^e),Height+e);
+        else
+                // h = e/(p-1) here, this is the extraordinary case
+                u_0 := ResFld!(-1* p/Pi^e);
+                return element(hURF,(hURF_Elt`Value)^p - hURF_Elt`Value*u_0,Height+e);
+        end if;        
+end intrinsic;
+*/
+
+intrinsic Parent(hURF_Elt::higherUnitsResFldElt)->higherUnitsResFld
+{Returns the parent of higher unit residue field element}
+    return hURF_Elt`Parent;
+end intrinsic;
+
+
+
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ PRINTING INTRINSICS 
+// --------------------------------------
+
+
+intrinsic Print(hURF_Elt::higherUnitsResFldElt)
+{Prints the element hURF_Elt}
+        printf "1 + %m*pi^%m",hURF_Elt`Value,hURF_Elt`Height;
+end intrinsic; 
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ COERCION & LIFTING INTRINSICS 
+// --------------------------------------
+
+
+intrinsic IsCoercible(hURF::higherUnitsResFld,u::FldPadElt)->BoolElt,.
+{Coerces a field element to a higher units residue field element}
+        if (not IsCoercible(Parent(u),hURF`Pi)) then return false, "The uniformizer of the higher units residue field is not coercible to the field of the element."; end if;
+        if (not (Valuation(Parent(u)!(1-u)) gt 0)) then return false, "The field element is not a principal unit"; end if;
+        pi := Parent(u)!hURF`Pi;
+
+        return true, element(hURF, hURF`ResFld!((u-1)/(pi^Valuation(1-u))),Valuation(1-u));
+end intrinsic;
+ 
+
+intrinsic coerceToField(F::FldPad,hURF_elt::higherUnitsResFldElt)->FldPadElt
+{Lifts a higher units residue field element to its field}
+    hURF := hURF_elt`Parent;
+    require IsCoercible(F,hURF`Pi): "The uniformizer of the higher unit cannot be coerced into the field";
+    require IsCoercible(F,hURF_elt`Value): "The value of the higher unit element cannot be coerced into the field";
+    return 1 + (F! hURF_elt`Value)*(F!hURF`Pi)^(hURF_elt`Height);
+end intrinsic;
+
+intrinsic lift(hURF_elt::higherUnitsResFldElt)->FldPadElt
+{Lifts a higher units residue field element to its field}
+    hURF := hURF_elt`Parent;
+    F := hURF`Field;
+    return 1 + (F! hURF_elt`Value)*(F!hURF`Pi)^(hURF_elt`Height);
+end intrinsic;
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ VECTOR SPACE INTRINSICS 
+// --------------------------------------
+
+intrinsic vectorSpace(hURF::higherUnitsResFld)->ModTupFld
+{Identifies the hUnits residue with a Fp-vectorspace}
+        return hURF`VectorSpace;
+end intrinsic;
+
+
+intrinsic higherUnitToVector(hURF_elt::higherUnitsResFldElt)->ModTupFld
+{Gives the vectorrepresentation of higher unit residue element}
+        map := (hURF_elt`Parent)`Mapping;
+        return map(hURF_elt`Value);
+end intrinsic;
+
+intrinsic vectorToHigherUnit(hURF::higherUnitsResFld,v::ModTupFldElt, h::RngIntElt)->higherUnitsResFldElt
+{Creates higher unit out of a vector}
+    require v in hURF`VectorSpace: "The vector is not in the vector space of the higher unit universe"; 
+    map := hURF`Mapping;
+    return element(hURF,Inverse(map)(v),h);
+end intrinsic;
+
+
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ ARITHMETIC INTRINSICS 
+// --------------------------------------
+
+intrinsic pthPower(hURF_Elt::higherUnitsResFldElt)
+{This functional intrinsic takes the p-th power of the higher units residue field element}
+        hURF := hURF_Elt`Parent;
+        Pi := hURF`Pi;
+        e := AbsoluteRamificationDegree(hURF`Field);
+        p := Prime(hURF`Field);
+        Height := hURF_Elt`Height;
+        ResFld := hURF`ResFld;
+        e0 := e div (p-1);
+
+        if (Height lt e0) then
+                hURF_Elt`Value := hURF_Elt`Value^p;
+                hURF_Elt`Height := Height*p;
+                //return element(hURF,hURF_Elt`Value^p,Height*p);
+        elif (Height gt e0) then
+                hURF_Elt`Value := hURF_Elt`Value * ResFld!(p/Pi^e);
+                hURF_Elt`Height := Height+e;
+                //return element(hURF,hURF_Elt`Value * ResFld!(p/Pi^e),Height+e);
+        else
+                // h = e/(p-1) here, this is the extraordinary case
+                u_0 := ResFld!(-1* p/Pi^e);
+                hURF_Elt`Value := (hURF_Elt`Value)^p - hURF_Elt`Value*u_0;
+                hURF_Elt`Height := Height+e;
+
+                //u_0 := ResFld!(-1* p/Pi^e);
+                //return element(hURF,(hURF_Elt`Value)^p - hURF_Elt`Value*u_0,Height+e);
+        end if;        
+end intrinsic;
+
+
+intrinsic '^'(hURF_Elt::higherUnitsResFldElt,n::RngIntElt)->higherUnitsResFldElt
+{This functional intrinsic takes the n-th power of the higher units residue field element; only implemented for n is p-th power}
+        hURF := hURF_Elt`Parent;
+        p := Prime(hURF`Field);
+        r,b := Valuation(n,p);
+        require b eq 1: "The power n is not a p-th power";
+        hURF_Elt_Return := element(hURF,hURF_Elt`Value,hURF_Elt`Height);
+        for i in [1..r] do
+            pthPower(hURF_Elt_Return);
+        end for;
+        return hURF_Elt_Return;
+
+
+end intrinsic;
+
+
+
+
+// --------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------
+// --------------------------------------
+// ------------ ADVANCED ARITHMETIC INTRINSICS 
+// --------------------------------------
+
+// Input: a local field F, in the ramified representation, that contains a pth root of unity
+// Output: a Weakly Distinguished Unit: delta
+//
+// A weakly distinguished unit is a lift of an element in the residue of U_{pe/(p-1)},
+// that is not a p-th power of an element in U_{e/(p-1)}. See the summary of Michiel Koster
+// above theorem 2.2.
+
+intrinsic weaklyDistinguishedUnit(F::FldPad)->higherUnitsResFldElt
+{Computes a weakly distinguished unit, given the uniformizer of Magma}
+    Pi := UniformizingElement(F);
+    return weaklyDistinguishedUnit(F,Pi);
+end intrinsic;
+
+
+intrinsic weaklyDistinguishedUnit(F::FldPad,Pi::FldPadElt)->higherUnitsResFldElt
+{Computes a weakly distinguished unit}
+    e := AbsoluteRamificationDegree(F);
+    f := AbsoluteInertiaDegree(F);
+    p := Prime(F);
+    e0 := e div (p-1);
+
+    // create higher units universe of F with 
+    // uniformizing element Pi
+
+    hURF := hUnitsResFld(F,Pi);
+    ResFld<t> := hURF`ResFld;
+
+    // Pick the set of generators { 1 - t^i*pi^e0 }
+    generators := [element(hURF,-t^i,e0) : i in [0..(f-1)]];
+    // Raise them all to the power p
+    generatorsPthPower := [g^p : g in generators];
+
+    // Make the vector space associated to the higher units
+    // of F with height e0*p  
+    V := hURF`VectorSpace;
+    // And see the p-th powers of the generators as vectors.
+    vecGenerators := [higherUnitToVector(u) : u in generatorsPthPower];
+
+    // create the subspace by this set, and calculate its complement
+    U := sub<V | vecGenerators>;
+    W := Complement(V,U);
+
+    // Pick a basis element in this complement
+    vectorDelta := BasisElement(W,1);
+    // Create a higher unit residue field element from this vector
+    // and lift it to the field F
+    return lift(vectorToHigherUnit(hURF,vectorDelta,e0*p));
+    
+end intrinsic;
+
+
+
+// Computes the so-called "Superfluous element", needed in the
+// exponential representation-function.
+//
+// Write e0 = e/(p-1) and  b*p^r = e0, with r maximal.
+// Observe the set U_r, and raise each element to the
+// p^(r+1)-th power. This set S is in the set U_{pe0}.
+//
+// Take the field U_{pe0}/U_{pe0-1}, then S are f elements
+// but they do not Fp-generate this field. Therefore, there
+// is a 'superfluous' element. 
+// The origin of this element in U_b is returned, and the
+// p^(r+1)th power also. So:
+
+// Returns s,s^(p^(r+1)) , where s^(p^(r+1)) is a superfluous 
+// element modulo U_{pe0 - 1}
+
+intrinsic superfluousElement(F::FldPad,Pi::FldPadElt)->FldPadElt,FldPadElt
+{Computes the element in U_(e/p^r(p-1)) such that t^(p^(r+1)) is superfluous as higher unit residue field element}
+    e := AbsoluteRamificationDegree(F);
+    f := AbsoluteInertiaDegree(F);
+    p := Prime(F);
+    e0 := e div (p-1);
+    
+    ResFld<t> := ResidueClassField(Integers(F));
+    omega_gamma := teichmuellerLiftExtended(F,t);
+    
+    
+    r,b := Valuation(e0,p);
+    Tb := [ 1 - omega_gamma^i * Pi^b : i in [0..(f-1)]];
+    
+
+    // Reduce to a higher units residue 
+    hUR := hUnitsResFld(F,Pi);
+    hUR_TbPow := [hUR! t : t in Tb];
+    
+    // Take p^(r+1)-th powers
+    hUR_TbPow := [ t^(p^(r+1)) : t in hUR_TbPow];
+        
+    vectors_hUR_TbPow := [ higherUnitToVector(u) : u in hUR_TbPow];
+
+    // Return a vector that linearly depends on the others
+    for i in [1..f] do
+        if not IsIndependent(vectors_hUR_TbPow[[1..i]]) then
+            // Now i is the index of the vector that can be written
+            // as a linear combination of the earlier vectors. we
+            // return the associated field elements in TbPow and Tb.
+        
+            return Tb[i]^(p^(r+1)),Tb[i];
+        end if;
+    end for;
+ 
+    error Error("No superfluous element found!");
+    
+    
+end intrinsic;
+
+// Overload
+intrinsic superfluousElement(F::FldPad)->FldPadElt,FldPadElt
+{Overloads superfluousElement}
+    return superfluousElement(F,UniformizingElement(F));
+end intrinsic;
+
+
+// - Take an element x in hUR, of height i.
+// - Let S = [s_1,...s_f] be a sequence of elements of hUR of height i, 
+//   which generate U_i/U_{i+1}.
+//
+//  This function calculates a_1,...a_f in F_p such that
+//  x*s_1^a_1 * s_2^a_2 * ... s_f^a_f  = 0 modulo U_(i + 1).
+//
+// Returns: 
+// - [a_1,....,a_f]
+
+intrinsic coordinatesWithRespectTo(hUR_Elt::higherUnitsResFldElt,S::SeqEnum)->SeqEnum
+{Reduces the field element x modulo a (generating) sequence of field elements S, with the same height as x}
+
+    hUR := hUR_Elt`Parent;
+    f := AbsoluteInertiaDegree(hUR`Field);
+    require (#S eq f): "Not enough elements in S;  f needed";
+    
+    vectorS := [higherUnitToVector(s) : s in S];
+    require IsIndependent(vectorS): "The elements in S doesn't generate U_i/U_{i-1}";
+    
+    vec_Elt := higherUnitToVector(hUR_Elt);
+    V := VectorSpaceWithBasis(vectorS);
+    return Coordinates(V,vec_Elt);
+
+end intrinsic;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
