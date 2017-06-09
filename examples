@@ -27,49 +27,49 @@
 
 
 
-    m1 := 7^2;
-    L1<z1> := CyclotomicField(m1);
-    R1 := Integers(L1);
+    m := 7^2;
+    L<z> := CyclotomicField(m);
+    R := Integers(L);
 
 
-    a1 := 4323* z1^9 + 532*z1^2 + 2;
-    b1 := 432*z1^3 + 324*z1^2 + z1 + 4;
-    s1 := powerResidueSymbol(a1,b1,m1,z1,R1);
-    s2 := powerResidueSymbol(b1,a1,m1,z1,R1);
-    s3 := umkehrFaktor(a1,b1,ideal<R1|m1>,z1); 
-    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m1;
+    a := 4323* z^9 + 532*z^2 + 2;
+    b := 432*z^3 + 324*z^2 + z + 4;
+    s1 := powerResidueSymbol(a,b,m,z,R);
+    s2 := powerResidueSymbol(b,a,m,z,R);
+    s3 := umkehrFaktor(a,b,ideal<R|m>,z); 
+    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m;
 
     
-    a1,b1 := getTwoCoPrimeElements(R1,m1,4); // from "getRandomElement"
-    a1 := L1!a1; b1 := L1!b1;
-    s1 := powerResidueSymbol(a1,b1,m1,z1,R1);
-    s2 := powerResidueSymbol(b1,a1,m1,z1,R1);
-    s3 := umkehrFaktor(a1,b1,ideal<R1|m1>,z1); 
-    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m1;
+    a,b := getTwoCoPrimeElements(R,m,4); // from "getRandomElement"
+    a := L!a; b := L!b;
+    s1 := powerResidueSymbol(a,b,m,z,R);
+    s2 := powerResidueSymbol(b,a,m,z,R);
+    s3 := umkehrFaktor(a,b,ideal<R1|m1>,z1); 
+    printf "The symbol %o should be %o + %o mod %o \n",s1,s2,s3,m;
 
 
 // Example Hilbert symbol
 // -----------------------
 
     // GLOBAL -------------------
-    m1 := 5^2*3^2;
-    L1<z1> := CyclotomicField(m1);
-    R1 := Integers(L1);
-    a1 := 4323* z1^9 + 532*z1^2 + 2;
-    b1 := 432*z1^3 + 324*z1^2 + z1 + 4;    
-    pi := Decomposition(R1,5)[1][1]; // Prime ideal above (5)
+    m := 5^2*3^2;
+    L<z> := CyclotomicField(m);
+    R := Integers(L);
+    a := 4323* z^9 + 532*z^2 + 2;
+    b := 432*z^3 + 324*z^2 + z+ 4;    
+    pi := Decomposition(R,5)[1][1]; // Prime ideal above (5)
     
 
-    print hilbertSymbol(a1,b1,pi,m1,z1);
+    print hilbertSymbol(a,b,pi,m,z);
 
 
 
     // LOCAL --------------------------
 
     // Initialization
-    m1 := 3^2*7;
+    m := 3^2*7;
     F3 := pAdicField(3,400);
-    F<z> := LocalField(F3,CyclotomicPolynomial(m1));
+    F<z> := LocalField(F3,CyclotomicPolynomial(m));
     F,map := RamifiedRepresentation(F);
     z := map(z);
     pi := UniformizingElement(F);
@@ -80,7 +80,7 @@
     x := 1 + 2*z*pi + 3*z^2*pi^2 + (1-z^3)*pi^3;
     y := 1 + 1*z*pi + 2*z^3*pi^2 + (1-z^2)*pi^3;
 
-    symbol,zeta := hilbertSymbol(x,y,m1,z);
+    symbol,zeta := hilbertSymbol(x,y,m,z);
     print symbol;
 
 
