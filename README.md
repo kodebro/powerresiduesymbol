@@ -33,7 +33,7 @@ Now, the elements are defined. Beware that the elements that you put in the powe
 ```
 s1 := powerResidueSymbol(a,b,m,z,R);
 s2 := powerResidueSymbol(b,a,m,z,R);
-s3 := umkehrFaktor(a,b,ideal<R1|m1>,z1); ```
+s3 := umkehrFaktor(a,b,ideal<R|m>,z);
 ```
 The output of `powerResidueSymbol` consists of an integer `a` modulo `m` and the element `z`. This means that the power residue symbol of the input equals `z^a`.
 
