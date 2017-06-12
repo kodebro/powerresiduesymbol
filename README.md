@@ -48,7 +48,7 @@ In the subsequent part the function `getTwoCoPrimeElements` is used, to generate
     a := L!a; b := L!b;
     s1 := powerResidueSymbol(a,b,m,z,R);
     s2 := powerResidueSymbol(b,a,m,z,R);
-    s3 := umkehrFaktor(a,b,ideal<R1|m1>,z1); 
+    s3 := umkehrFaktor(a,b,ideal<R|m>,z); 
 ```
 Remark the code snippet `a := L!a; b := L!b;`. This shows that the power residue symbol algorithm only accepts `a` and `b` as input when they are field elements -- that is why we coerce them first to their parent field.
 
